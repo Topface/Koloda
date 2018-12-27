@@ -47,7 +47,7 @@ private let cardResetAnimationDuration: TimeInterval = 0.2
 internal var cardSwipeActionAnimationDuration: TimeInterval = DragSpeed.default.rawValue
 
 public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
-
+    
     //Drag animation constants
     public var rotationMax = defaultRotationMax
     public var rotationAngle = defaultRotationAngle
@@ -60,7 +60,7 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
     }
     
     private var overlayView: OverlayView?
-    public private(set) var contentView: UIView?
+    public var contentView: UIView?
     
     private var panGestureRecognizer: UIPanGestureRecognizer!
     private var tapGestureRecognizer: UITapGestureRecognizer!
@@ -68,7 +68,7 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
     private var dragBegin = false
     private var dragDistance = CGPoint.zero
     private var swipePercentageMargin: CGFloat = 0.0
-
+    
     
     //MARK: Lifecycle
     init() {
@@ -109,7 +109,7 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
         tapGestureRecognizer.delegate = self
         tapGestureRecognizer.cancelsTouchesInView = false
         addGestureRecognizer(tapGestureRecognizer)
-
+        
         if let delegate = delegate {
             cardSwipeActionAnimationDuration = delegate.card(cardSwipeSpeed: self).rawValue
         }
@@ -129,11 +129,11 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
         } else {
             self.addSubview(view)
         }
-
+        
         self.contentView = view
         configureContentView()
     }
-
+    
     private func configureOverlayView() {
         if let overlay = self.overlayView {
             overlay.translatesAutoresizingMaskIntoConstraints = false
@@ -221,51 +221,53 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
         }
     }
     
-    private var isBottomToTopSwipe:Bool = false
+    public private(set) var isBottomToTopSwipe:Bool = false
     
     //MARK: GestureRecognizers
     @objc func panGestureRecognized(_ gestureRecognizer: UIPanGestureRecognizer) {
         dragDistance = gestureRecognizer.translation(in: self)
         
         let touchLocation = gestureRecognizer.location(in: self)
-
         let velocity = gestureRecognizer.velocity(in: self)
         
         switch gestureRecognizer.state {
         case .began:
-
             if fabs(velocity.y) > fabs(velocity.x) {
                 isBottomToTopSwipe = true
-                delegate?.card(verticalPanHandled: self, pan: gestureRecognizer)
+                if dragDistance.y.isLessThanOrEqualTo(0.0) {
+                    delegate?.card(verticalPanHandled: self, pan: gestureRecognizer)
+                }
+                
                 return
             }else {
                 isBottomToTopSwipe = false
+                let firstTouchPoint = gestureRecognizer.location(in: self)
+                let newAnchorPoint = CGPoint(x: firstTouchPoint.x / bounds.width, y: firstTouchPoint.y / bounds.height)
+                let oldPosition = CGPoint(x: bounds.size.width * layer.anchorPoint.x, y: bounds.size.height * layer.anchorPoint.y)
+                let newPosition = CGPoint(x: bounds.size.width * newAnchorPoint.x, y: bounds.size.height * newAnchorPoint.y)
+                layer.anchorPoint = newAnchorPoint
+                layer.position = CGPoint(x: layer.position.x - oldPosition.x + newPosition.x, y: layer.position.y - oldPosition.y + newPosition.y)
+                removeAnimations()
+                
+                dragBegin = true
+                
+                animationDirectionY = touchLocation.y >= frame.size.height / 2 ? -1.0 : 1.0
+                layer.rasterizationScale = UIScreen.main.scale
+                layer.shouldRasterize = true
+                delegate?.card(cardPanBegan: self)
             }
             
             
-            let firstTouchPoint = gestureRecognizer.location(in: self)
-            let newAnchorPoint = CGPoint(x: firstTouchPoint.x / bounds.width, y: firstTouchPoint.y / bounds.height)
-            let oldPosition = CGPoint(x: bounds.size.width * layer.anchorPoint.x, y: bounds.size.height * layer.anchorPoint.y)
-            let newPosition = CGPoint(x: bounds.size.width * newAnchorPoint.x, y: bounds.size.height * newAnchorPoint.y)
-            layer.anchorPoint = newAnchorPoint
-            layer.position = CGPoint(x: layer.position.x - oldPosition.x + newPosition.x, y: layer.position.y - oldPosition.y + newPosition.y)
-            removeAnimations()
             
-            dragBegin = true
-            
-            animationDirectionY = touchLocation.y >= frame.size.height / 2 ? -1.0 : 1.0
-            layer.rasterizationScale = UIScreen.main.scale
-            layer.shouldRasterize = true
-            delegate?.card(cardPanBegan: self)
             
         case .changed:
             let rotationStrength = min(dragDistance.x / frame.width, rotationMax)
             let rotationAngle = animationDirectionY * self.rotationAngle * rotationStrength
             let scaleStrength = 1 - ((1 - scaleMin) * abs(rotationStrength))
             let scale = max(scaleStrength, scaleMin)
-    
-            if isBottomToTopSwipe {
-                delegate?.card(verticalPanHandled: self, pan: gestureRecognizer)
+            
+            if fabs(velocity.y) > fabs(velocity.x) && isBottomToTopSwipe {
+                //             delegate?.card(verticalPanHandled: self, pan: gestureRecognizer)
                 return
             }
             
@@ -285,6 +287,7 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
         case .ended:
             swipeMadeAction()
             delegate?.card(cardPanFinished: self)
+            isBottomToTopSwipe = false
             layer.shouldRasterize = false
             
         default:
@@ -321,7 +324,7 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
                 return (distance, direction)
             }
             return closest
-        }.direction
+            }.direction
     }
     
     private var dragPercentage: CGFloat {
@@ -343,9 +346,9 @@ public class DraggableCardView: UIView, UIGestureRecognizerDelegate {
             // check 4 borders for intersection with line between touchpoint and center of card
             // return smallest percentage of distance to edge point or 0
             return rect.perimeterLines
-                        .compactMap { CGPoint.intersectionBetweenLines(targetLine, line2: $0) }
-                        .map { centerDistance / $0.distanceTo(.zero) }
-                        .min() ?? 0
+                .compactMap { CGPoint.intersectionBetweenLines(targetLine, line2: $0) }
+                .map { centerDistance / $0.distanceTo(.zero) }
+                .min() ?? 0
         }
     }
     
