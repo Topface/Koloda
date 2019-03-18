@@ -14,6 +14,7 @@ public enum DragSpeed: TimeInterval {
     case moderate = 1.5
     case `default` = 0.8
     case fast = 0.4
+    case dating = 0.3
 }
 
 protocol DraggableCardDelegate: class {
