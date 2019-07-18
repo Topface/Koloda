@@ -19,7 +19,7 @@ extension KolodaView {
     }
     
     func generateCard(_ frame: CGRect) -> DraggableCardView {
-        let cardView = DraggableCardView(frame: frame)
+        let cardView = DraggableCardView(frame: frame, disableSwipe: self.shouldDisableCardSwipe)
         cardView.delegate = self
         
         return cardView
